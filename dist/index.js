@@ -1,10 +1,5 @@
-"use strict";
-var __create = Object.create;
 var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
@@ -12,22 +7,6 @@ var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
 
 // server/_core/env.ts
 var ENV;
@@ -52,9 +31,11 @@ var init_env = __esm({
 });
 
 // server/storage.ts
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 async function storagePut(key, data, contentType = "application/octet-stream") {
   await s3.send(
-    new import_client_s3.PutObjectCommand({
+    new PutObjectCommand({
       Bucket: BUCKET,
       Key: key,
       Body: data,
@@ -67,13 +48,11 @@ async function storagePut(key, data, contentType = "application/octet-stream") {
 function randomSuffix() {
   return Math.random().toString(36).substring(2, 10);
 }
-var import_client_s3, import_s3_request_presigner, s3, BUCKET;
+var s3, BUCKET;
 var init_storage = __esm({
   "server/storage.ts"() {
     "use strict";
-    import_client_s3 = require("@aws-sdk/client-s3");
-    import_s3_request_presigner = require("@aws-sdk/s3-request-presigner");
-    s3 = new import_client_s3.S3Client({
+    s3 = new S3Client({
       region: process.env.S3_REGION || "us-east-1",
       endpoint: process.env.S3_ENDPOINT,
       credentials: {
@@ -143,11 +122,11 @@ var init_imageGeneration = __esm({
 });
 
 // server/_core/index.ts
-var import_config = require("dotenv/config");
-var import_express2 = __toESM(require("express"), 1);
-var import_http = require("http");
-var import_net = __toESM(require("net"), 1);
-var import_express3 = require("@trpc/server/adapters/express");
+import "dotenv/config";
+import express2 from "express";
+import { createServer } from "http";
+import net from "net";
+import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
 // shared/const.ts
 var COOKIE_NAME = "app_session_id";
@@ -157,10 +136,10 @@ var UNAUTHED_ERR_MSG = "Please login (10001)";
 var NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
 
 // server/db.ts
-var import_mysql2 = require("drizzle-orm/mysql2");
-var import_promise = __toESM(require("mysql2/promise"), 1);
-var import_drizzle_orm = require("drizzle-orm");
 init_env();
+import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
+import { eq } from "drizzle-orm";
 
 // drizzle/schema.ts
 var schema_exports = {};
@@ -173,61 +152,72 @@ __export(schema_exports, {
   visualizations: () => visualizations,
   xOAuthTokens: () => xOAuthTokens
 });
-var import_mysql_core = require("drizzle-orm/mysql-core");
-var users = (0, import_mysql_core.mysqlTable)("users", {
-  id: (0, import_mysql_core.int)("id").autoincrement().primaryKey(),
-  openId: (0, import_mysql_core.varchar)("openId", { length: 64 }).notNull().unique(),
-  name: (0, import_mysql_core.text)("name"),
-  email: (0, import_mysql_core.varchar)("email", { length: 320 }),
-  loginMethod: (0, import_mysql_core.varchar)("loginMethod", { length: 64 }),
-  role: (0, import_mysql_core.mysqlEnum)("role", ["user", "admin"]).default("user").notNull(),
-  createdAt: (0, import_mysql_core.timestamp)("createdAt").defaultNow().notNull(),
-  updatedAt: (0, import_mysql_core.timestamp)("updatedAt").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: (0, import_mysql_core.timestamp)("lastSignedIn").defaultNow().notNull()
+import {
+  mysqlTable,
+  int,
+  varchar,
+  text,
+  timestamp,
+  json,
+  mysqlEnum,
+  date,
+  boolean,
+  bigint
+} from "drizzle-orm/mysql-core";
+var users = mysqlTable("users", {
+  id: int("id").autoincrement().primaryKey(),
+  openId: varchar("openId", { length: 64 }).notNull().unique(),
+  name: text("name"),
+  email: varchar("email", { length: 320 }),
+  loginMethod: varchar("loginMethod", { length: 64 }),
+  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull()
 });
-var visualizations = (0, import_mysql_core.mysqlTable)("visualizations", {
-  id: (0, import_mysql_core.int)("id").primaryKey().autoincrement(),
-  category: (0, import_mysql_core.varchar)("category", { length: 64 }).notNull(),
+var visualizations = mysqlTable("visualizations", {
+  id: int("id").primaryKey().autoincrement(),
+  category: varchar("category", { length: 64 }).notNull(),
   // e.g. "price-action", "factor-scores", "sentiment", "etf-flows"
-  chartType: (0, import_mysql_core.varchar)("chart_type", { length: 64 }).notNull(),
+  chartType: varchar("chart_type", { length: 64 }).notNull(),
   // e.g. "candlestick", "line", "bar", "heatmap"
-  title: (0, import_mysql_core.varchar)("title", { length: 255 }).notNull(),
-  imageUrl: (0, import_mysql_core.text)("image_url").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  imageUrl: text("image_url").notNull(),
   // S3 URL of the rendered chart image
-  aiNarration: (0, import_mysql_core.text)("ai_narration"),
+  aiNarration: text("ai_narration"),
   // Plain-English analyst explanation of what the chart shows
-  aiPrediction: (0, import_mysql_core.text)("ai_prediction"),
+  aiPrediction: text("ai_prediction"),
   // AI's own opinionated take and forward-looking view
-  ttsAudioUrl: (0, import_mysql_core.text)("tts_audio_url"),
+  ttsAudioUrl: text("tts_audio_url"),
   // S3 URL of the TTS voiceover audio for this chart
-  sourceTable: (0, import_mysql_core.varchar)("source_table", { length: 64 }).notNull(),
+  sourceTable: varchar("source_table", { length: 64 }).notNull(),
   // Which tradinghq table this came from
-  weekOf: (0, import_mysql_core.date)("week_of").notNull(),
+  weekOf: date("week_of").notNull(),
   // ISO date of the Sunday this chart was generated for
-  durationSeconds: (0, import_mysql_core.int)("duration_seconds").default(45),
+  durationSeconds: int("duration_seconds").default(45),
   // Target segment duration in the montage
-  createdAt: (0, import_mysql_core.timestamp)("created_at").defaultNow().notNull()
+  createdAt: timestamp("created_at").defaultNow().notNull()
 });
-var montages = (0, import_mysql_core.mysqlTable)("montages", {
-  id: (0, import_mysql_core.int)("id").primaryKey().autoincrement(),
-  weekOf: (0, import_mysql_core.date)("week_of").notNull(),
-  title: (0, import_mysql_core.varchar)("title", { length: 255 }),
+var montages = mysqlTable("montages", {
+  id: int("id").primaryKey().autoincrement(),
+  weekOf: date("week_of").notNull(),
+  title: varchar("title", { length: 255 }),
   // Final video title (AI-generated, operator-approved)
-  description: (0, import_mysql_core.text)("description"),
+  description: text("description"),
   // YouTube description (AI-generated)
-  tags: (0, import_mysql_core.json)("tags").$type(),
+  tags: json("tags").$type(),
   // YouTube tags array
-  chapterMarkers: (0, import_mysql_core.json)("chapter_markers").$type(),
-  visualizationIds: (0, import_mysql_core.json)("visualization_ids").$type().notNull(),
+  chapterMarkers: json("chapter_markers").$type(),
+  visualizationIds: json("visualization_ids").$type().notNull(),
   // Ordered list of selected visualization IDs
-  youtubeClipUrls: (0, import_mysql_core.json)("youtube_clip_urls").$type().default([]),
+  youtubeClipUrls: json("youtube_clip_urls").$type().default([]),
   // Curated YouTube clip URLs
-  aiScript: (0, import_mysql_core.text)("ai_script"),
+  aiScript: text("ai_script"),
   // Full montage script / conversation guide
-  targetDurationSeconds: (0, import_mysql_core.int)("target_duration_seconds").default(480),
+  targetDurationSeconds: int("target_duration_seconds").default(480),
   // 7-10 min = 420-600s
-  actualDurationSeconds: (0, import_mysql_core.int)("actual_duration_seconds"),
-  status: (0, import_mysql_core.mysqlEnum)("status", [
+  actualDurationSeconds: int("actual_duration_seconds"),
+  status: mysqlEnum("status", [
     "draft",
     // Charts selected, not yet assembled
     "assembling",
@@ -243,29 +233,29 @@ var montages = (0, import_mysql_core.mysqlTable)("montages", {
     "posted"
     // Posted to YouTube and X
   ]).default("draft").notNull(),
-  montageVideoUrl: (0, import_mysql_core.text)("montage_video_url"),
+  montageVideoUrl: text("montage_video_url"),
   // S3 URL of the assembled montage (before reaction)
-  reactionVideoUrl: (0, import_mysql_core.text)("reaction_video_url"),
+  reactionVideoUrl: text("reaction_video_url"),
   // S3 URL of Matthew's reaction video
-  thumbnailUrl: (0, import_mysql_core.text)("thumbnail_url"),
+  thumbnailUrl: text("thumbnail_url"),
   // S3 URL of the generated thumbnail card
-  youtubeVideoId: (0, import_mysql_core.varchar)("youtube_video_id", { length: 64 }),
+  youtubeVideoId: varchar("youtube_video_id", { length: 64 }),
   // YouTube video ID after upload
-  xPostId: (0, import_mysql_core.varchar)("x_post_id", { length: 64 }),
+  xPostId: varchar("x_post_id", { length: 64 }),
   // X post ID after posting
-  linkedinCopy: (0, import_mysql_core.text)("linkedin_copy"),
+  linkedinCopy: text("linkedin_copy"),
   // Formatted LinkedIn post copy
-  xCopy: (0, import_mysql_core.text)("x_copy"),
+  xCopy: text("x_copy"),
   // X post copy (280 char limit)
-  youtubeCopy: (0, import_mysql_core.text)("youtube_copy"),
+  youtubeCopy: text("youtube_copy"),
   // YouTube description copy
-  postedAt: (0, import_mysql_core.timestamp)("posted_at"),
-  createdAt: (0, import_mysql_core.timestamp)("created_at").defaultNow().notNull(),
-  updatedAt: (0, import_mysql_core.timestamp)("updated_at").defaultNow().onUpdateNow().notNull()
+  postedAt: timestamp("posted_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull()
 });
-var publications = (0, import_mysql_core.mysqlTable)("publications", {
-  id: (0, import_mysql_core.int)("id").primaryKey().autoincrement(),
-  type: (0, import_mysql_core.mysqlEnum)("type", [
+var publications = mysqlTable("publications", {
+  id: int("id").primaryKey().autoincrement(),
+  type: mysqlEnum("type", [
     "newsletter",
     // LinkedIn newsletter editions
     "article",
@@ -279,76 +269,76 @@ var publications = (0, import_mysql_core.mysqlTable)("publications", {
     "blog"
     // Blog posts
   ]).notNull(),
-  title: (0, import_mysql_core.varchar)("title", { length: 512 }).notNull(),
-  url: (0, import_mysql_core.text)("url"),
+  title: varchar("title", { length: 512 }).notNull(),
+  url: text("url"),
   // External URL (LinkedIn post, podcast episode, etc.)
-  platform: (0, import_mysql_core.varchar)("platform", { length: 64 }),
+  platform: varchar("platform", { length: 64 }),
   // e.g. "LinkedIn", "YouTube", "Spotify", "X"
-  publishedAt: (0, import_mysql_core.timestamp)("published_at").notNull(),
-  summary: (0, import_mysql_core.text)("summary"),
+  publishedAt: timestamp("published_at").notNull(),
+  summary: text("summary"),
   // Brief description for display on codexyield.com
-  contentBody: (0, import_mysql_core.text)("content_body"),
+  contentBody: text("content_body"),
   // Full text content (for newsletters/articles if available)
-  thumbnailUrl: (0, import_mysql_core.text)("thumbnail_url"),
+  thumbnailUrl: text("thumbnail_url"),
   // Optional image for display
-  featured: (0, import_mysql_core.boolean)("featured").default(false),
+  featured: boolean("featured").default(false),
   // Pin to top of publications feed
-  createdAt: (0, import_mysql_core.timestamp)("created_at").defaultNow().notNull(),
-  updatedAt: (0, import_mysql_core.timestamp)("updated_at").defaultNow().onUpdateNow().notNull()
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull()
 });
-var contentDrafts = (0, import_mysql_core.mysqlTable)("content_drafts", {
-  id: (0, import_mysql_core.int)("id").primaryKey().autoincrement(),
-  montageId: (0, import_mysql_core.int)("montage_id"),
+var contentDrafts = mysqlTable("content_drafts", {
+  id: int("id").primaryKey().autoincrement(),
+  montageId: int("montage_id"),
   // If this draft is for a montage video
-  publicationId: (0, import_mysql_core.int)("publication_id"),
+  publicationId: int("publication_id"),
   // If this draft is for a publication
-  platform: (0, import_mysql_core.mysqlEnum)("platform", ["x", "linkedin", "youtube"]).notNull(),
-  draftCopy: (0, import_mysql_core.text)("draft_copy").notNull(),
+  platform: mysqlEnum("platform", ["x", "linkedin", "youtube"]).notNull(),
+  draftCopy: text("draft_copy").notNull(),
   // The AI-generated post text
-  status: (0, import_mysql_core.mysqlEnum)("status", ["draft", "approved", "rejected", "posted"]).default("draft").notNull(),
-  postedAt: (0, import_mysql_core.timestamp)("posted_at"),
-  postId: (0, import_mysql_core.varchar)("post_id", { length: 128 }),
+  status: mysqlEnum("status", ["draft", "approved", "rejected", "posted"]).default("draft").notNull(),
+  postedAt: timestamp("posted_at"),
+  postId: varchar("post_id", { length: 128 }),
   // Platform post ID after posting
-  createdAt: (0, import_mysql_core.timestamp)("created_at").defaultNow().notNull(),
-  updatedAt: (0, import_mysql_core.timestamp)("updated_at").defaultNow().onUpdateNow().notNull()
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull()
 });
-var xOAuthTokens = (0, import_mysql_core.mysqlTable)("x_oauth_tokens", {
-  id: (0, import_mysql_core.int)("id").primaryKey().autoincrement(),
-  accountHandle: (0, import_mysql_core.varchar)("account_handle", { length: 64 }).notNull(),
+var xOAuthTokens = mysqlTable("x_oauth_tokens", {
+  id: int("id").primaryKey().autoincrement(),
+  accountHandle: varchar("account_handle", { length: 64 }).notNull(),
   // e.g. "@Halfacre_Matt"
-  accessToken: (0, import_mysql_core.text)("access_token").notNull(),
-  refreshToken: (0, import_mysql_core.text)("refresh_token"),
-  tokenType: (0, import_mysql_core.varchar)("token_type", { length: 32 }).default("bearer"),
-  scope: (0, import_mysql_core.text)("scope"),
-  expiresAt: (0, import_mysql_core.timestamp)("expires_at"),
-  createdAt: (0, import_mysql_core.timestamp)("created_at").defaultNow().notNull(),
-  updatedAt: (0, import_mysql_core.timestamp)("updated_at").defaultNow().onUpdateNow().notNull()
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  tokenType: varchar("token_type", { length: 32 }).default("bearer"),
+  scope: text("scope"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull()
 });
-var performanceSnapshots = (0, import_mysql_core.mysqlTable)("performance_snapshots", {
-  id: (0, import_mysql_core.int)("id").primaryKey().autoincrement(),
-  snapshotDate: (0, import_mysql_core.date)("snapshot_date").notNull(),
-  aumUsd: (0, import_mysql_core.bigint)("aum_usd", { mode: "number" }),
+var performanceSnapshots = mysqlTable("performance_snapshots", {
+  id: int("id").primaryKey().autoincrement(),
+  snapshotDate: date("snapshot_date").notNull(),
+  aumUsd: bigint("aum_usd", { mode: "number" }),
   // Total AUM in USD cents
-  btcAlphaPercent: (0, import_mysql_core.varchar)("btc_alpha_percent", { length: 16 }),
+  btcAlphaPercent: varchar("btc_alpha_percent", { length: 16 }),
   // e.g. "5.23"
-  cagrPercent: (0, import_mysql_core.varchar)("cagr_percent", { length: 16 }),
+  cagrPercent: varchar("cagr_percent", { length: 16 }),
   // e.g. "7.41"
-  totalTrades: (0, import_mysql_core.int)("total_trades").default(0),
-  winRatePercent: (0, import_mysql_core.varchar)("win_rate_percent", { length: 16 }),
+  totalTrades: int("total_trades").default(0),
+  winRatePercent: varchar("win_rate_percent", { length: 16 }),
   // e.g. "68.5"
-  activeClients: (0, import_mysql_core.int)("active_clients").default(0),
-  totalRotations: (0, import_mysql_core.int)("total_rotations").default(0),
-  profitableRotations: (0, import_mysql_core.int)("profitable_rotations").default(0),
-  createdAt: (0, import_mysql_core.timestamp)("created_at").defaultNow().notNull()
+  activeClients: int("active_clients").default(0),
+  totalRotations: int("total_rotations").default(0),
+  profitableRotations: int("profitable_rotations").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
 // server/db.ts
-var portalPool = import_promise.default.createPool({
+var portalPool = mysql.createPool({
   uri: ENV.databaseUrl,
   waitForConnections: true,
   connectionLimit: 10
 });
-var db = (0, import_mysql2.drizzle)(portalPool, { schema: schema_exports, mode: "default" });
+var db = drizzle(portalPool, { schema: schema_exports, mode: "default" });
 async function upsertUser(user) {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const values = { openId: user.openId };
@@ -377,15 +367,15 @@ async function upsertUser(user) {
   await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
 async function getUserByOpenId(openId) {
-  const result = await db.select().from(users).where((0, import_drizzle_orm.eq)(users.openId, openId)).limit(1);
+  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result[0];
 }
-var tradinghqPool = import_promise.default.createPool({
+var tradinghqPool = mysql.createPool({
   uri: ENV.tradinghqDatabaseUrl || ENV.databaseUrl.replace(/\/[^/]+$/, "/tradinghq"),
   waitForConnections: true,
   connectionLimit: 5
 });
-var tradinghqDb = (0, import_mysql2.drizzle)(tradinghqPool, { mode: "default" });
+var tradinghqDb = drizzle(tradinghqPool, { mode: "default" });
 async function getVisualizations(weekOf) {
   const rows = await portalPool.query(
     weekOf ? `SELECT * FROM visualizations WHERE week_of = ? ORDER BY category, id` : `SELECT * FROM visualizations ORDER BY week_of DESC, category, id`,
@@ -630,9 +620,9 @@ var HttpError = class extends Error {
 var ForbiddenError = (msg) => new HttpError(403, msg);
 
 // server/_core/sdk.ts
-var import_axios = __toESM(require("axios"), 1);
-var import_cookie = require("cookie");
-var import_jose = require("jose");
+import axios from "axios";
+import { parse as parseCookieHeader } from "cookie";
+import { SignJWT, jwtVerify } from "jose";
 init_env();
 var isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
 var EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
@@ -675,7 +665,7 @@ var OAuthService = class {
     return data;
   }
 };
-var createOAuthHttpClient = () => import_axios.default.create({
+var createOAuthHttpClient = () => axios.create({
   baseURL: ENV.oAuthServerUrl,
   timeout: AXIOS_TIMEOUT_MS
 });
@@ -732,7 +722,7 @@ var SDKServer = class {
     if (!cookieHeader) {
       return /* @__PURE__ */ new Map();
     }
-    const parsed = (0, import_cookie.parse)(cookieHeader);
+    const parsed = parseCookieHeader(cookieHeader);
     return new Map(Object.entries(parsed));
   }
   getSessionSecret() {
@@ -759,7 +749,7 @@ var SDKServer = class {
     const expiresInMs = options.expiresInMs ?? ONE_YEAR_MS;
     const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1e3);
     const secretKey = this.getSessionSecret();
-    return new import_jose.SignJWT({
+    return new SignJWT({
       openId: payload.openId,
       appId: payload.appId,
       name: payload.name
@@ -772,7 +762,7 @@ var SDKServer = class {
     }
     try {
       const secretKey = this.getSessionSecret();
-      const { payload } = await (0, import_jose.jwtVerify)(cookieValue, secretKey, {
+      const { payload } = await jwtVerify(cookieValue, secretKey, {
         algorithms: ["HS256"]
       });
       const { openId, appId, name } = payload;
@@ -889,20 +879,20 @@ function registerOAuthRoutes(app) {
 }
 
 // server/routers.ts
-var import_zod2 = require("zod");
+import { z as z2 } from "zod";
 
 // server/_core/trpc.ts
-var import_server = require("@trpc/server");
-var import_superjson = __toESM(require("superjson"), 1);
-var t = import_server.initTRPC.context().create({
-  transformer: import_superjson.default
+import { initTRPC, TRPCError } from "@trpc/server";
+import superjson from "superjson";
+var t = initTRPC.context().create({
+  transformer: superjson
 });
 var router = t.router;
 var publicProcedure = t.procedure;
 var requireUser = t.middleware(async (opts) => {
   const { ctx, next } = opts;
   if (!ctx.user) {
-    throw new import_server.TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
   }
   return next({
     ctx: {
@@ -916,7 +906,7 @@ var adminProcedure = t.procedure.use(
   t.middleware(async (opts) => {
     const { ctx, next } = opts;
     if (!ctx.user || ctx.user.role !== "admin") {
-      throw new import_server.TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
+      throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
     return next({
       ctx: {
@@ -928,11 +918,11 @@ var adminProcedure = t.procedure.use(
 );
 
 // server/_core/systemRouter.ts
-var import_zod = require("zod");
+import { z } from "zod";
 
 // server/_core/notification.ts
-var import_server2 = require("@trpc/server");
 init_env();
+import { TRPCError as TRPCError2 } from "@trpc/server";
 var TITLE_MAX_LENGTH = 1200;
 var CONTENT_MAX_LENGTH = 2e4;
 var trimValue = (value) => value.trim();
@@ -946,13 +936,13 @@ var buildEndpointUrl = (baseUrl) => {
 };
 var validatePayload = (input) => {
   if (!isNonEmptyString2(input.title)) {
-    throw new import_server2.TRPCError({
+    throw new TRPCError2({
       code: "BAD_REQUEST",
       message: "Notification title is required."
     });
   }
   if (!isNonEmptyString2(input.content)) {
-    throw new import_server2.TRPCError({
+    throw new TRPCError2({
       code: "BAD_REQUEST",
       message: "Notification content is required."
     });
@@ -960,13 +950,13 @@ var validatePayload = (input) => {
   const title = trimValue(input.title);
   const content = trimValue(input.content);
   if (title.length > TITLE_MAX_LENGTH) {
-    throw new import_server2.TRPCError({
+    throw new TRPCError2({
       code: "BAD_REQUEST",
       message: `Notification title must be at most ${TITLE_MAX_LENGTH} characters.`
     });
   }
   if (content.length > CONTENT_MAX_LENGTH) {
-    throw new import_server2.TRPCError({
+    throw new TRPCError2({
       code: "BAD_REQUEST",
       message: `Notification content must be at most ${CONTENT_MAX_LENGTH} characters.`
     });
@@ -976,13 +966,13 @@ var validatePayload = (input) => {
 async function notifyOwner(payload) {
   const { title, content } = validatePayload(payload);
   if (!ENV.forgeApiUrl) {
-    throw new import_server2.TRPCError({
+    throw new TRPCError2({
       code: "INTERNAL_SERVER_ERROR",
       message: "Notification service URL is not configured."
     });
   }
   if (!ENV.forgeApiKey) {
-    throw new import_server2.TRPCError({
+    throw new TRPCError2({
       code: "INTERNAL_SERVER_ERROR",
       message: "Notification service API key is not configured."
     });
@@ -1016,16 +1006,16 @@ async function notifyOwner(payload) {
 // server/_core/systemRouter.ts
 var systemRouter = router({
   health: publicProcedure.input(
-    import_zod.z.object({
-      timestamp: import_zod.z.number().min(0, "timestamp cannot be negative")
+    z.object({
+      timestamp: z.number().min(0, "timestamp cannot be negative")
     })
   ).query(() => ({
     ok: true
   })),
   notifyOwner: adminProcedure.input(
-    import_zod.z.object({
-      title: import_zod.z.string().min(1, "title is required"),
-      content: import_zod.z.string().min(1, "content is required")
+    z.object({
+      title: z.string().min(1, "title is required"),
+      content: z.string().min(1, "content is required")
     })
   ).mutation(async ({ input }) => {
     const delivered = await notifyOwner(input);
@@ -1562,10 +1552,10 @@ async function runWeeklyVisualizationBatch(weekOf) {
 init_storage();
 init_env();
 var visualizationsRouter = router({
-  getAll: protectedProcedure.input(import_zod2.z.object({ weekOf: import_zod2.z.string().optional() }).optional()).query(async ({ input }) => {
+  getAll: protectedProcedure.input(z2.object({ weekOf: z2.string().optional() }).optional()).query(async ({ input }) => {
     return getVisualizations(input?.weekOf);
   }),
-  getById: protectedProcedure.input(import_zod2.z.object({ id: import_zod2.z.number() })).query(async ({ input }) => {
+  getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => {
     return getVisualizationById(input.id);
   }),
   getWeeks: protectedProcedure.query(async () => {
@@ -1573,7 +1563,7 @@ var visualizationsRouter = router({
     const weeks = Array.from(new Set(all.map((v) => v.week_of))).sort().reverse();
     return weeks;
   }),
-  generateWeekly: protectedProcedure.input(import_zod2.z.object({ weekOf: import_zod2.z.string().optional() })).mutation(async ({ input }) => {
+  generateWeekly: protectedProcedure.input(z2.object({ weekOf: z2.string().optional() })).mutation(async ({ input }) => {
     return runWeeklyVisualizationBatch(input.weekOf);
   })
 });
@@ -1588,25 +1578,25 @@ var montagesRouter = router({
       chapter_markers: typeof m.chapter_markers === "string" ? JSON.parse(m.chapter_markers) : m.chapter_markers || []
     }));
   }),
-  getById: protectedProcedure.input(import_zod2.z.object({ id: import_zod2.z.number() })).query(async ({ input }) => {
+  getById: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => {
     return getMontageById(input.id);
   }),
-  create: protectedProcedure.input(import_zod2.z.object({
-    weekOf: import_zod2.z.string(),
-    visualizationIds: import_zod2.z.array(import_zod2.z.number()),
-    targetDurationSeconds: import_zod2.z.number().optional()
+  create: protectedProcedure.input(z2.object({
+    weekOf: z2.string(),
+    visualizationIds: z2.array(z2.number()),
+    targetDurationSeconds: z2.number().optional()
   })).mutation(async ({ input }) => {
     const id = await insertMontage(input);
     return { id };
   }),
-  updateSelections: protectedProcedure.input(import_zod2.z.object({
-    id: import_zod2.z.number(),
-    visualizationIds: import_zod2.z.array(import_zod2.z.number())
+  updateSelections: protectedProcedure.input(z2.object({
+    id: z2.number(),
+    visualizationIds: z2.array(z2.number())
   })).mutation(async ({ input }) => {
     await updateMontage(input.id, { visualizationIds: input.visualizationIds });
     return { success: true };
   }),
-  generateScript: protectedProcedure.input(import_zod2.z.object({ montageId: import_zod2.z.number() })).mutation(async ({ input }) => {
+  generateScript: protectedProcedure.input(z2.object({ montageId: z2.number() })).mutation(async ({ input }) => {
     const montage = await getMontageById(input.montageId);
     if (!montage) throw new Error("Montage not found");
     const vizIds = typeof montage.visualization_ids === "string" ? JSON.parse(montage.visualization_ids) : montage.visualization_ids || [];
@@ -1656,10 +1646,10 @@ Keep the total estimated read time to 7-10 minutes.`
     await updateMontage(input.montageId, { aiScript: script, status: "assembling" });
     return { script };
   }),
-  uploadReactionVideo: protectedProcedure.input(import_zod2.z.object({
-    montageId: import_zod2.z.number(),
-    videoBase64: import_zod2.z.string(),
-    mimeType: import_zod2.z.string().default("video/mp4")
+  uploadReactionVideo: protectedProcedure.input(z2.object({
+    montageId: z2.number(),
+    videoBase64: z2.string(),
+    mimeType: z2.string().default("video/mp4")
   })).mutation(async ({ input }) => {
     const buffer = Buffer.from(input.videoBase64, "base64");
     const key = `reactions/montage-${input.montageId}-${randomSuffix()}.mp4`;
@@ -1670,7 +1660,7 @@ Keep the total estimated read time to 7-10 minutes.`
     });
     return { url };
   }),
-  generateMetadata: protectedProcedure.input(import_zod2.z.object({ montageId: import_zod2.z.number() })).mutation(async ({ input }) => {
+  generateMetadata: protectedProcedure.input(z2.object({ montageId: z2.number() })).mutation(async ({ input }) => {
     const montage = await getMontageById(input.montageId);
     if (!montage) throw new Error("Montage not found");
     const metaResponse = await invokeLLM({
@@ -1735,12 +1725,12 @@ Return JSON with:
     });
     return meta;
   }),
-  approve: protectedProcedure.input(import_zod2.z.object({
-    montageId: import_zod2.z.number(),
-    title: import_zod2.z.string(),
-    description: import_zod2.z.string(),
-    xCopy: import_zod2.z.string(),
-    linkedinCopy: import_zod2.z.string()
+  approve: protectedProcedure.input(z2.object({
+    montageId: z2.number(),
+    title: z2.string(),
+    description: z2.string(),
+    xCopy: z2.string(),
+    linkedinCopy: z2.string()
   })).mutation(async ({ input }) => {
     await updateMontage(input.montageId, {
       title: input.title,
@@ -1751,7 +1741,7 @@ Return JSON with:
     });
     return { success: true };
   }),
-  postToYouTube: protectedProcedure.input(import_zod2.z.object({ montageId: import_zod2.z.number() })).mutation(async ({ input }) => {
+  postToYouTube: protectedProcedure.input(z2.object({ montageId: z2.number() })).mutation(async ({ input }) => {
     const montage = await getMontageById(input.montageId);
     if (!montage) throw new Error("Montage not found");
     if (montage.status !== "approved") throw new Error("Montage must be approved before posting");
@@ -1763,7 +1753,7 @@ Return JSON with:
       description: montage.youtube_copy || montage.description
     };
   }),
-  postToX: protectedProcedure.input(import_zod2.z.object({ montageId: import_zod2.z.number() })).mutation(async ({ input }) => {
+  postToX: protectedProcedure.input(z2.object({ montageId: z2.number() })).mutation(async ({ input }) => {
     const montage = await getMontageById(input.montageId);
     if (!montage) throw new Error("Montage not found");
     if (montage.status !== "approved") throw new Error("Montage must be approved before posting");
@@ -1787,30 +1777,30 @@ Return JSON with:
   })
 });
 var publicationsRouter = router({
-  getAll: protectedProcedure.input(import_zod2.z.object({ type: import_zod2.z.string().optional() }).optional()).query(async ({ input }) => {
+  getAll: protectedProcedure.input(z2.object({ type: z2.string().optional() }).optional()).query(async ({ input }) => {
     return getPublications(input?.type);
   }),
   // Public endpoint for codexyield.com and pitch
-  getAllPublic: publicProcedure.input(import_zod2.z.object({ type: import_zod2.z.string().optional(), limit: import_zod2.z.number().optional() }).optional()).query(async ({ input }) => {
+  getAllPublic: publicProcedure.input(z2.object({ type: z2.string().optional(), limit: z2.number().optional() }).optional()).query(async ({ input }) => {
     const pubs = await getPublications(input?.type);
     return input?.limit ? pubs.slice(0, input.limit) : pubs;
   }),
-  add: protectedProcedure.input(import_zod2.z.object({
-    type: import_zod2.z.enum(["newsletter", "article", "podcast", "speech", "video", "blog"]),
-    title: import_zod2.z.string(),
-    url: import_zod2.z.string().optional(),
-    platform: import_zod2.z.string().optional(),
-    publishedAt: import_zod2.z.string(),
-    summary: import_zod2.z.string().optional(),
-    contentBody: import_zod2.z.string().optional(),
-    thumbnailUrl: import_zod2.z.string().optional(),
-    featured: import_zod2.z.boolean().optional()
+  add: protectedProcedure.input(z2.object({
+    type: z2.enum(["newsletter", "article", "podcast", "speech", "video", "blog"]),
+    title: z2.string(),
+    url: z2.string().optional(),
+    platform: z2.string().optional(),
+    publishedAt: z2.string(),
+    summary: z2.string().optional(),
+    contentBody: z2.string().optional(),
+    thumbnailUrl: z2.string().optional(),
+    featured: z2.boolean().optional()
   })).mutation(async ({ input }) => {
     const id = await insertPublication(input);
     return { id };
   }),
-  bulkImportLinkedIn: protectedProcedure.input(import_zod2.z.object({
-    urls: import_zod2.z.array(import_zod2.z.string())
+  bulkImportLinkedIn: protectedProcedure.input(z2.object({
+    urls: z2.array(z2.string())
   })).mutation(async ({ input }) => {
     const results = [];
     for (const url of input.urls) {
@@ -1863,14 +1853,14 @@ Return JSON: { "title": "...", "platform": "LinkedIn", "type": "newsletter" }`
   })
 });
 var contentDraftsRouter = router({
-  getAll: protectedProcedure.input(import_zod2.z.object({ status: import_zod2.z.string().optional() }).optional()).query(async ({ input }) => {
+  getAll: protectedProcedure.input(z2.object({ status: z2.string().optional() }).optional()).query(async ({ input }) => {
     return getContentDrafts(input?.status);
   }),
-  generateDraft: protectedProcedure.input(import_zod2.z.object({
-    montageId: import_zod2.z.number().optional(),
-    publicationId: import_zod2.z.number().optional(),
-    platform: import_zod2.z.enum(["x", "linkedin", "youtube"]),
-    context: import_zod2.z.string()
+  generateDraft: protectedProcedure.input(z2.object({
+    montageId: z2.number().optional(),
+    publicationId: z2.number().optional(),
+    platform: z2.enum(["x", "linkedin", "youtube"]),
+    context: z2.string()
   })).mutation(async ({ input }) => {
     const platformGuide = {
       x: "X (Twitter) post, 280 characters max, punchy and direct, includes [LINK] placeholder",
@@ -1909,11 +1899,11 @@ Return only the post copy, nothing else.`
     });
     return { id, draftCopy };
   }),
-  approve: protectedProcedure.input(import_zod2.z.object({ id: import_zod2.z.number() })).mutation(async ({ input }) => {
+  approve: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
     await updateContentDraftStatus(input.id, "approved");
     return { success: true };
   }),
-  reject: protectedProcedure.input(import_zod2.z.object({ id: import_zod2.z.number() })).mutation(async ({ input }) => {
+  reject: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
     await updateContentDraftStatus(input.id, "rejected");
     return { success: true };
   })
@@ -1932,7 +1922,7 @@ var settingsRouter = router({
       expiresAt: token?.expires_at || null
     };
   }),
-  getXOAuthUrl: protectedProcedure.input(import_zod2.z.object({ redirectUri: import_zod2.z.string() })).query(async ({ input }) => {
+  getXOAuthUrl: protectedProcedure.input(z2.object({ redirectUri: z2.string() })).query(async ({ input }) => {
     const params = new URLSearchParams({
       response_type: "code",
       client_id: ENV.xOAuthClientId,
@@ -1982,36 +1972,35 @@ async function createContext(opts) {
 }
 
 // server/_core/vite.ts
-var import_express = __toESM(require("express"), 1);
-var import_fs = __toESM(require("fs"), 1);
-var import_nanoid = require("nanoid");
-var import_path = __toESM(require("path"), 1);
-var import_vite3 = require("vite");
+import express from "express";
+import fs2 from "fs";
+import { nanoid } from "nanoid";
+import path2 from "path";
+import { createServer as createViteServer } from "vite";
 
 // vite.config.ts
-var import_vite_plugin_jsx_loc = require("@builder.io/vite-plugin-jsx-loc");
-var import_vite = __toESM(require("@tailwindcss/vite"), 1);
-var import_plugin_react = __toESM(require("@vitejs/plugin-react"), 1);
-var import_node_fs = __toESM(require("node:fs"), 1);
-var import_node_path = __toESM(require("node:path"), 1);
-var import_vite2 = require("vite");
-var import_vite_plugin_manus_runtime = require("vite-plugin-manus-runtime");
-var import_meta = {};
-var PROJECT_ROOT = import_meta.dirname;
-var LOG_DIR = import_node_path.default.join(PROJECT_ROOT, ".manus-logs");
+import { jsxLocPlugin } from "@builder.io/vite-plugin-jsx-loc";
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import fs from "node:fs";
+import path from "node:path";
+import { defineConfig } from "vite";
+import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+var PROJECT_ROOT = import.meta.dirname;
+var LOG_DIR = path.join(PROJECT_ROOT, ".manus-logs");
 var MAX_LOG_SIZE_BYTES = 1 * 1024 * 1024;
 var TRIM_TARGET_BYTES = Math.floor(MAX_LOG_SIZE_BYTES * 0.6);
 function ensureLogDir() {
-  if (!import_node_fs.default.existsSync(LOG_DIR)) {
-    import_node_fs.default.mkdirSync(LOG_DIR, { recursive: true });
+  if (!fs.existsSync(LOG_DIR)) {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
   }
 }
 function trimLogFile(logPath, maxSize) {
   try {
-    if (!import_node_fs.default.existsSync(logPath) || import_node_fs.default.statSync(logPath).size <= maxSize) {
+    if (!fs.existsSync(logPath) || fs.statSync(logPath).size <= maxSize) {
       return;
     }
-    const lines = import_node_fs.default.readFileSync(logPath, "utf-8").split("\n");
+    const lines = fs.readFileSync(logPath, "utf-8").split("\n");
     const keptLines = [];
     let keptBytes = 0;
     const targetSize = TRIM_TARGET_BYTES;
@@ -2022,19 +2011,19 @@ function trimLogFile(logPath, maxSize) {
       keptLines.unshift(lines[i]);
       keptBytes += lineBytes;
     }
-    import_node_fs.default.writeFileSync(logPath, keptLines.join("\n"), "utf-8");
+    fs.writeFileSync(logPath, keptLines.join("\n"), "utf-8");
   } catch {
   }
 }
 function writeToLogFile(source, entries) {
   if (entries.length === 0) return;
   ensureLogDir();
-  const logPath = import_node_path.default.join(LOG_DIR, `${source}.log`);
+  const logPath = path.join(LOG_DIR, `${source}.log`);
   const lines = entries.map((entry) => {
     const ts = (/* @__PURE__ */ new Date()).toISOString();
     return `[${ts}] ${JSON.stringify(entry)}`;
   });
-  import_node_fs.default.appendFileSync(logPath, `${lines.join("\n")}
+  fs.appendFileSync(logPath, `${lines.join("\n")}
 `, "utf-8");
   trimLogFile(logPath, MAX_LOG_SIZE_BYTES);
 }
@@ -2104,21 +2093,21 @@ function vitePluginManusDebugCollector() {
     }
   };
 }
-var plugins = [(0, import_plugin_react.default)(), (0, import_vite.default)(), (0, import_vite_plugin_jsx_loc.jsxLocPlugin)(), (0, import_vite_plugin_manus_runtime.vitePluginManusRuntime)(), vitePluginManusDebugCollector()];
-var vite_config_default = (0, import_vite2.defineConfig)({
+var plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+var vite_config_default = defineConfig({
   plugins,
   resolve: {
     alias: {
-      "@": import_node_path.default.resolve(import_meta.dirname, "client", "src"),
-      "@shared": import_node_path.default.resolve(import_meta.dirname, "shared"),
-      "@assets": import_node_path.default.resolve(import_meta.dirname, "attached_assets")
+      "@": path.resolve(import.meta.dirname, "client", "src"),
+      "@shared": path.resolve(import.meta.dirname, "shared"),
+      "@assets": path.resolve(import.meta.dirname, "attached_assets")
     }
   },
-  envDir: import_node_path.default.resolve(import_meta.dirname),
-  root: import_node_path.default.resolve(import_meta.dirname, "client"),
-  publicDir: import_node_path.default.resolve(import_meta.dirname, "client", "public"),
+  envDir: path.resolve(import.meta.dirname),
+  root: path.resolve(import.meta.dirname, "client"),
+  publicDir: path.resolve(import.meta.dirname, "client", "public"),
   build: {
-    outDir: import_node_path.default.resolve(import_meta.dirname, "dist/public"),
+    outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true
   },
   server: {
@@ -2140,14 +2129,13 @@ var vite_config_default = (0, import_vite2.defineConfig)({
 });
 
 // server/_core/vite.ts
-var import_meta2 = {};
 async function setupVite(app, server) {
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
     allowedHosts: true
   };
-  const vite = await (0, import_vite3.createServer)({
+  const vite = await createViteServer({
     ...vite_config_default,
     configFile: false,
     server: serverOptions,
@@ -2157,16 +2145,16 @@ async function setupVite(app, server) {
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
     try {
-      const clientTemplate = import_path.default.resolve(
-        import_meta2.dirname,
+      const clientTemplate = path2.resolve(
+        import.meta.dirname,
         "../..",
         "client",
         "index.html"
       );
-      let template = await import_fs.default.promises.readFile(clientTemplate, "utf-8");
+      let template = await fs2.promises.readFile(clientTemplate, "utf-8");
       template = template.replace(
         `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${(0, import_nanoid.nanoid)()}"`
+        `src="/src/main.tsx?v=${nanoid()}"`
       );
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
@@ -2177,22 +2165,22 @@ async function setupVite(app, server) {
   });
 }
 function serveStatic(app) {
-  const distPath = process.env.NODE_ENV === "development" ? import_path.default.resolve(import_meta2.dirname, "../..", "dist", "public") : import_path.default.resolve(import_meta2.dirname, "public");
-  if (!import_fs.default.existsSync(distPath)) {
+  const distPath = process.env.NODE_ENV === "development" ? path2.resolve(import.meta.dirname, "../..", "dist", "public") : path2.resolve(import.meta.dirname, "public");
+  if (!fs2.existsSync(distPath)) {
     console.error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
     );
   }
-  app.use(import_express.default.static(distPath));
+  app.use(express.static(distPath));
   app.use("*", (_req, res) => {
-    res.sendFile(import_path.default.resolve(distPath, "index.html"));
+    res.sendFile(path2.resolve(distPath, "index.html"));
   });
 }
 
 // server/_core/index.ts
 function isPortAvailable(port) {
   return new Promise((resolve) => {
-    const server = import_net.default.createServer();
+    const server = net.createServer();
     server.listen(port, () => {
       server.close(() => resolve(true));
     });
@@ -2208,14 +2196,14 @@ async function findAvailablePort(startPort = 3e3) {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 async function startServer() {
-  const app = (0, import_express2.default)();
-  const server = (0, import_http.createServer)(app);
-  app.use(import_express2.default.json({ limit: "50mb" }));
-  app.use(import_express2.default.urlencoded({ limit: "50mb", extended: true }));
+  const app = express2();
+  const server = createServer(app);
+  app.use(express2.json({ limit: "50mb" }));
+  app.use(express2.urlencoded({ limit: "50mb", extended: true }));
   registerOAuthRoutes(app);
   app.use(
     "/api/trpc",
-    (0, import_express3.createExpressMiddleware)({
+    createExpressMiddleware({
       router: appRouter,
       createContext
     })
