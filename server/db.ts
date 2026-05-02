@@ -6,7 +6,10 @@ import * as schema from "../drizzle/schema";
 import type { InsertUser } from "../drizzle/schema";
 import { users } from "../drizzle/schema";
 
-// ─── codex_portal connection (reads + writes) ─────────────────────────────────
+// --- codex_portal connection (DATABASE_URL) ---
+// Operations data: users, credentials, content_drafts, visualizations, montages,
+// publications, x_oauth_tokens, performance_snapshots.
+// This is the write target for all social media content state.
 const portalPool = mysql.createPool({
   uri: ENV.databaseUrl,
   waitForConnections: true,
@@ -15,7 +18,7 @@ const portalPool = mysql.createPool({
 
 export const db = drizzle(portalPool, { schema, mode: "default" });
 
-// ─── Auth helpers (required by _core/sdk.ts) ──────────────────────────────────
+// --- Auth helpers (required by _core/sdk.ts) ---
 
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
@@ -50,7 +53,10 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
-// ─── tradinghq connection (read-only — never writes) ──────────────────────────
+// --- tradinghq connection (TRADINGHQ_DATABASE_URL) -- read-only, never writes ---
+// Research data: factors, ML models, backtests, signals, candlesticks, onchain, macro.
+// This service reads tradinghq for content generation (charts, narration, signal context).
+// Future: tradinghq becomes the primary data hub for all 5 non-tradinghq sites.
 const tradinghqPool = mysql.createPool({
   uri: ENV.tradinghqDatabaseUrl || ENV.databaseUrl.replace(/\/[^/]+$/, "/tradinghq"),
   waitForConnections: true,
@@ -59,7 +65,7 @@ const tradinghqPool = mysql.createPool({
 
 export const tradinghqDb = drizzle(tradinghqPool, { mode: "default" });
 
-// ─── codex_portal query helpers ───────────────────────────────────────────────
+// --- codex_portal query helpers ---
 
 export async function getVisualizations(weekOf?: string) {
   const rows = await portalPool.query(
@@ -279,7 +285,7 @@ export async function getLatestPerformanceSnapshot() {
   return (rows[0] as any[])[0] || null;
 }
 
-// ─── tradinghq read helpers ───────────────────────────────────────────────────
+// --- tradinghq read helpers (research data for content generation) ---
 
 export async function getLatestCandlesticks(pair: string = "btcusd", limit: number = 90) {
   try {
